@@ -1,3 +1,7 @@
 [tools]
 node = "26.13.1"
 pnpm = "12.18.0"
+
+[env]
+# Enable running commands from installed packages without pnpm exec
+_.path = ["{{config_root}}/node_modules/.bin"]

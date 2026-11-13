@@ -1,0 +1,2 @@
+- Uses the new `cf` CLI which replaces `wrangler`
+- <https://developers.cloudflare.com/cf/>
