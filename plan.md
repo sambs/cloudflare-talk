@@ -18,13 +18,13 @@ An event goes on sale with a fixed seat map. Buyers pick a seat, which places a 
 
 ## 3. Architecture
 
-| Component | Role |
-|---|---|
-| **Worker + static assets** | Serves the buyer UI (phones) and the dashboard (projector), and routes API calls to the right Durable Object. |
-| **Durable Object: `EventSale`** (one per event, SQLite storage) | Owns the **live sale**: seat availability, holds, the transactional outbox, and the WebSocket fan-out. It's the single point of coordination while there's contention. |
-| **Workflow: `ReservationWorkflow`** (one instance per reservation) | Owns the **reservation lifecycle**: waits for payment, charges, records the booking, then settles the seat. Durable, with retried steps. |
-| **D1: `tickets`** | The **system of record** for confirmed bookings: "my bookings", check-in, refunds, reporting. |
-| **Fake payment provider** (a function or second Worker) | Can be configured to decline payments and to fail with transient errors. |
+| Component                                                          | Role                                                                                                                                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Worker + static assets**                                         | Serves the buyer UI (phones) and the dashboard (projector), and routes API calls to the right Durable Object.                                                          |
+| **Durable Object: `EventSale`** (one per event, SQLite storage)    | Owns the **live sale**: seat availability, holds, the transactional outbox, and the WebSocket fan-out. It's the single point of coordination while there's contention. |
+| **Workflow: `ReservationWorkflow`** (one instance per reservation) | Owns the **reservation lifecycle**: waits for payment, charges, records the booking, then settles the seat. Durable, with retried steps.                               |
+| **D1: `tickets`**                                                  | The **system of record** for confirmed bookings: "my bookings", check-in, refunds, reporting.                                                                          |
+| **Fake payment provider** (a function or second Worker)            | Can be configured to decline payments and to fail with transient errors.                                                                                               |
 
 ### Responsibilities
 
@@ -84,22 +84,22 @@ sequenceDiagram
 
 ## 5. Reliability layers (the core of the talk)
 
-| Layer | Guarantee | Mechanism |
-|---|---|---|
-| **1. Transactional outbox** | Every committed hold starts a workflow | Seat change and outbox entry written in one DO transaction; nudge for speed, alarm as the safety net |
-| **2. Durable workflow** | Every started reservation runs to completion | Workflow steps are persisted and retried; sleeps and waits survive restarts |
-| **3. Idempotency** | Retries are always safe | `reservationId` is the key at every boundary |
+| Layer                       | Guarantee                                    | Mechanism                                                                                            |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **1. Transactional outbox** | Every committed hold starts a workflow       | Seat change and outbox entry written in one DO transaction; nudge for speed, alarm as the safety net |
+| **2. Durable workflow**     | Every started reservation runs to completion | Workflow steps are persisted and retried; sleeps and waits survive restarts                          |
+| **3. Idempotency**          | Retries are always safe                      | `reservationId` is the key at every boundary                                                         |
 
 After the hold, **the workflow acts as the outbox for everything downstream of payment**. Each step is durable and retried, so no second outbox is needed for the D1 write or the settle call.
 
 ### Idempotency at each boundary
 
-| Boundary | Key | Duplicate behaviour |
-|---|---|---|
-| DO → Workflow start | Workflow instance ID = `reservationId` | "Instance already exists" is treated as success |
-| Workflow → Payments | `idempotencyKey = reservationId` | Provider returns the original result and doesn't charge twice |
-| Workflow → D1 | `bookings.id = reservationId` | `ON CONFLICT (id) DO NOTHING` |
-| Workflow → DO settle | `reservationId` | Seat only changes if it's still held by that reservation |
+| Boundary             | Key                                    | Duplicate behaviour                                           |
+| -------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| DO → Workflow start  | Workflow instance ID = `reservationId` | "Instance already exists" is treated as success               |
+| Workflow → Payments  | `idempotencyKey = reservationId`       | Provider returns the original result and doesn't charge twice |
+| Workflow → D1        | `bookings.id = reservationId`          | `ON CONFLICT (id) DO NOTHING`                                 |
+| Workflow → DO settle | `reservationId`                        | Seat only changes if it's still held by that reservation      |
 
 ### Rules
 
@@ -193,21 +193,27 @@ export class ReservationWorkflow extends WorkflowEntrypoint {
       .catch(() => null);
 
     const result = paid
-      ? await step.do("charge",
+      ? await step.do(
+          "charge",
           { retries: { limit: 3, delay: "1 second", backoff: "exponential" } },
-          () => fakePay(this.env, { idempotencyKey: reservationId }))
+          () => fakePay(this.env, { idempotencyKey: reservationId }),
+        )
       : { ok: false, reason: "timeout" };
 
     if (result.ok) {
       await step.do("record booking", () =>
         this.env.DB.prepare(
           `INSERT INTO bookings (id, event_id, seat_id, customer, payment_ref)
-           VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`
-        ).bind(reservationId, eventId, seatId, customer, result.ref).run());
+           VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+        )
+          .bind(reservationId, eventId, seatId, customer, result.ref)
+          .run(),
+      );
     }
 
     await step.do(result.ok ? "mark sold" : "release seat", () =>
-      this.env.EVENT_SALE.getByName(eventId).settle(reservationId, result.ok));
+      this.env.EVENT_SALE.getByName(eventId).settle(reservationId, result.ok),
+    );
   }
 }
 ```
@@ -221,19 +227,23 @@ export class ReservationWorkflow extends WorkflowEntrypoint {
   "compatibility_date": "2026-11-01",
   "assets": { "directory": "./public" },
   "durable_objects": {
-    "bindings": [{ "name": "EVENT_SALE", "class_name": "EventSale" }]
+    "bindings": [{ "name": "EVENT_SALE", "class_name": "EventSale" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EventSale"] }],
-  "workflows": [{
-    "name": "reservation",
-    "binding": "RESERVATION",
-    "class_name": "ReservationWorkflow"
-  }],
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "tickets",
-    "database_id": "<id>"
-  }]
+  "workflows": [
+    {
+      "name": "reservation",
+      "binding": "RESERVATION",
+      "class_name": "ReservationWorkflow",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tickets",
+      "database_id": "<id>",
+    },
+  ],
 }
 ```
 
@@ -245,7 +255,7 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 
 - **Seat map**, live over WebSockets: available, held (with countdown), sold. Declined seats flash before they return to the pool.
 - **Outbox panel**: entries as cards moving from pending to done, showing attempt count and next retry time.
-- **Workflow panel**: active reservations and their current step (waiting for payment, charging, retry *n*, recording, settled).
+- **Workflow panel**: active reservations and their current step (waiting for payment, charging, retry _n_, recording, settled).
 - **Chaos controls**, all independent:
   - **Decline-rate slider** (0–50%): seats get released and resold.
   - **Flaky-provider toggle**: transient 503s, which Workflows step retries recover from.
