@@ -3,7 +3,7 @@ import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
 
 export default defineConfig({
   worker: {
-    name: "app",
+    name: "www",
     compatibilityDate: "2026-11-10",
     entrypoint,
     env: {

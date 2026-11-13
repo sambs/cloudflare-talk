@@ -36,6 +36,14 @@ pnpm test
 
 `pnpm test` starts the dev server itself, or reuses one that's already running.
 
+### Deployment
+
+- Sign in to Cloudflare
+- Create a new account (recommended)
+- `cf auth login`
+- `pnpm run deploy`
+- Answer yes when prompted whether to create a subdomain
+
 ## Commands
 
 | Command           | What it does                                      |
