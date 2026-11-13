@@ -13,7 +13,7 @@ Demo app for a short meet-up talk on Cloudflare Workers: a ticket booking app bu
 - `pnpm dev`: local dev server (DOs, Workflows and D1 all run locally)
 - `pnpm typecheck`: generate Worker types, then run `tsc`
 - `pnpm format`: run Prettier (also runs on staged files via a husky pre-commit hook)
-- `pnpm deploy`: deploy to Cloudflare
+- `pnpm run deploy`: deploy to Cloudflare (plain `pnpm deploy` is pnpm's built-in workspace deploy, not this script)
 
 ## Testing
 
