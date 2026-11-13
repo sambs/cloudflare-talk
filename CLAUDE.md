@@ -15,6 +15,16 @@ Demo app for a short meet-up talk on Cloudflare Workers: a ticket booking app bu
 - `pnpm format`: run Prettier (also runs on staged files via a husky pre-commit hook)
 - `pnpm deploy`: deploy to Cloudflare
 
+## Testing
+
+End-to-end tests only, using Playwright against the local dev server. Showing off local emulation is part of the talk, so test the real system instead of mocks.
+
+- Test contention with several browser contexts at once (e.g. two buyers holding the same seat).
+- Use the chaos controls to drive failures, so the tests double as demo rehearsals. Keep chaos deterministic in tests: decline rates of 0% or 100%, and "fail the next N calls" instead of random failures.
+- Make timeouts and backoff (payment wait, outbox retry) configurable so tests use short values.
+- Use a fresh event ID per test so each test gets its own DO and D1 rows.
+- Assert on what's visible (seat map, dashboard panels, my bookings) rather than on internals.
+
 ## Guidelines
 
 - This is demo code for a projector, so keep it short and readable. Clarity beats abstraction.
