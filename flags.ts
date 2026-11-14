@@ -2,8 +2,13 @@
 // Change them while the app runs: in the Cloudflare dashboard in production,
 // or with `cf flagship apps flags patch --local` in local dev.
 
-// In production `cf deploy` creates the Flagship app. Locally any ID works,
-// so it gets a fixed one the seed script can target.
+// In production `cf deploy` creates the Flagship app the first time, naming
+// it "<worker>-<binding>". The seed script finds it by that name.
+export const FLAGS_APP_NAME = "www-flags";
+
+// Locally we can't look the app up: `cf flagship apps list --local` returns
+// [] (cf 1.0.0-beta.31), even once it has flags. So the local binding gets a
+// fixed ID instead. Any ID works locally.
 export const LOCAL_FLAGS_APP_ID = "local-tickets";
 
 type Flag = {

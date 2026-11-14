@@ -9,7 +9,7 @@
     "db:migrate": "node scripts/db-migrate.ts",
     "flags:seed": "node scripts/flags-seed.ts",
     "build": "cf build",
-    "deploy": "pnpm db:migrate && cf deploy",
+    "deploy": "pnpm db:migrate && cf deploy && pnpm flags:seed",
     "typecheck": "cf workers types && tsc && tsc -p src/client && tsc -p scripts",
     "test": "playwright test",
     "format": "prettier --write .",

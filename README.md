@@ -53,15 +53,15 @@ pnpm test
 - `cf auth login`
 - `pnpm run deploy`
 - Answer yes when prompted whether to create a subdomain
-- The first deploy creates a Flagship app. To seed its flags, find its ID with `cf flagship apps list`, then run `pnpm flags:seed --app-id <id>`. Until then, the code's default values apply.
+- On the first deploy, when asked about the Flagship app, create a new one with the suggested name (`www-flags`). The deploy then seeds its flags, resetting any you've changed.
 
 ## Commands
 
-| Command           | What it does                                                                |
-| ----------------- | --------------------------------------------------------------------------- |
-| `pnpm dev`        | Local dev server                                                            |
-| `pnpm flags:seed` | Reset feature flags to `flags.ts` (`--local`, or `--app-id <id>`)           |
-| `pnpm test`       | Run the Playwright tests                                                    |
-| `pnpm typecheck`  | Generate Worker types, then run `tsc`                                       |
-| `pnpm format`     | Format the code with Prettier                                               |
-| `pnpm run deploy` | Apply D1 migrations, then deploy to Cloudflare (needs a Cloudflare account) |
+| Command           | What it does                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm dev`        | Local dev server                                                                                |
+| `pnpm flags:seed` | Reset production feature flags to `flags.ts` (`--local` for local dev)                          |
+| `pnpm test`       | Run the Playwright tests                                                                        |
+| `pnpm typecheck`  | Generate Worker types, then run `tsc`                                                           |
+| `pnpm format`     | Format the code with Prettier                                                                   |
+| `pnpm run deploy` | Apply D1 migrations, deploy to Cloudflare, then seed feature flags (needs a Cloudflare account) |

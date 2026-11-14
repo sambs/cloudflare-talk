@@ -15,7 +15,7 @@ No SSR framework: the front end is a client-only React app served as static asse
 - `src/worker/`: Hono routes (`index.ts`), the `EventSale` DO, `ReservationWorkflow` and the fake payment provider (`payments.ts`). Type-checked with Workers runtime types (root `tsconfig.json`).
 - `src/client/`: React. Two pages, `index.html` (buyer, phones) and `dashboard.html` (projector), each its own Vite entry. It has its own `tsconfig.json` with DOM types, because DOM types and Workers types conflict.
 - `migrations/`: D1 schema, applied by `scripts/db-migrate.ts` (`pnpm db:migrate`). `cf d1 migrations apply` only accepts a database ID, so the script looks up the production database by name (creating it if needed). Locally the D1 binding gets a fixed ID, `LOCAL_DB_ID` in `database.ts`.
-- `flags.ts`: the Flagship feature flags (decline rate, payment timeout), seeded by `scripts/flags-seed.ts` (`pnpm flags:seed`). The Worker evaluates them with `{ eventId }` as context, so a rule can target one event. Locally the binding gets a fixed app ID, `LOCAL_FLAGS_APP_ID`. In production `cf deploy` creates the app.
+- `flags.ts`: the Flagship feature flags (decline rate, payment timeout), seeded by `scripts/flags-seed.ts` (`pnpm flags:seed`). The Worker evaluates them with `{ eventId }` as context, so a rule can target one event. In production `cf deploy` creates the app (a Flagship binding can't be found by name like D1), and the seed script then finds it by name (`FLAGS_APP_NAME`) with `cf flagship apps list`. Locally the binding gets a fixed app ID, `LOCAL_FLAGS_APP_ID`.
 - `scripts/`: Node scripts, with their own `tsconfig.json` and Node types.
 - `src/shared/`: plain types used by both. It must not import from `cloudflare:workers` or the DOM.
 - Pick an event with `?event=<id>` (default `demo`). Each event ID is its own DO.
@@ -24,11 +24,11 @@ No SSR framework: the front end is a client-only React app served as static asse
 
 - `pnpm dev`: apply D1 migrations and seed feature flags locally, then start the local dev server (DOs, Workflows, D1 and Flagship all run locally)
 - `pnpm db:migrate`: apply D1 migrations to production, creating the database if needed. Add `--local` for the local database.
-- `pnpm flags:seed --local`: reset the local feature flags to `flags.ts`. Use `--app-id <id>` for production.
+- `pnpm flags:seed`: reset the production feature flags to `flags.ts`. Add `--local` for the local flags.
 - `cf flagship apps flags patch decline-rate --app-id local-tickets --local --default-variation high`: change a flag locally while the app runs
 - `pnpm typecheck`: generate Worker types, then run `tsc`
 - `pnpm format`: run Prettier (also runs on staged files via a husky pre-commit hook)
-- `pnpm run deploy`: apply D1 migrations to production, then deploy to Cloudflare (plain `pnpm deploy` is pnpm's built-in workspace deploy, not this script)
+- `pnpm run deploy`: apply D1 migrations to production, deploy to Cloudflare, then seed the production feature flags (plain `pnpm deploy` is pnpm's built-in workspace deploy, not this script)
 
 ## Testing
 
