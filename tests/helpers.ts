@@ -1,4 +1,10 @@
-import { expect, type Browser, type Page } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Browser,
+  type Page,
+} from "@playwright/test";
+import type { SaleSettings } from "../src/shared/types.ts";
 
 // A fresh event per test gets its own EventSale Durable Object
 export const newEvent = () => `test-${crypto.randomUUID()}`;
@@ -21,3 +27,15 @@ export const seat = (page: Page, seatId: string) =>
   page
     .getByRole("list", { name: "Seat map" })
     .getByRole("button", { name: new RegExp(`^${seatId} `) });
+
+// Per-event settings, e.g. a short payment timeout so tests run fast
+export async function configure(
+  request: APIRequestContext,
+  eventId: string,
+  settings: Partial<SaleSettings>,
+) {
+  const res = await request.patch(`/api/events/${eventId}/settings`, {
+    data: settings,
+  });
+  expect(res.ok()).toBe(true);
+}

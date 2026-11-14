@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { joinAs, newEvent, newPage, seat } from "./helpers.ts";
+import { configure, joinAs, newEvent, newPage, seat } from "./helpers.ts";
 
 test("a held seat updates live for every buyer and the dashboard", async ({
   browser,
@@ -50,4 +50,26 @@ test("the DO rejects a second hold, even from an out-of-date seat map", async ({
 
   await expect(bob.getByRole("alert")).toHaveText("Seat not available");
   await expect(bob.getByText("You're holding")).toHaveCount(0);
+});
+
+test("an unpaid hold is released when the payment window closes", async ({
+  browser,
+  request,
+}) => {
+  const eventId = newEvent();
+  await configure(request, eventId, { paymentTimeoutSeconds: 2 });
+  const alice = await newPage(browser);
+  const bob = await newPage(browser);
+  await joinAs(alice, "Alice", eventId);
+  await joinAs(bob, "Bob", eventId);
+
+  await seat(alice, "A1").click();
+  await expect(seat(bob, "A1")).toHaveAccessibleName("A1 held");
+
+  // Alice never pays: the workflow's wait times out and it releases the seat
+  await expect(seat(bob, "A1")).toHaveAccessibleName("A1 available", {
+    timeout: 10_000,
+  });
+  await expect(alice.getByRole("alert")).toHaveText("Your hold on A1 expired");
+  await expect(seat(alice, "A1")).toBeEnabled();
 });

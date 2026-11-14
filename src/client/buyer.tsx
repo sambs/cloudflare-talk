@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { holdSeat, useSeats } from "./event.ts";
 import { SeatMap } from "./SeatMap.tsx";
@@ -43,6 +43,20 @@ function SeatPicker({ nickname }: { nickname: string }) {
   const seats = useSeats();
   const [held, setHeld] = useState<string>();
   const [error, setError] = useState<string>();
+
+  // The workflow releases the seat if we don't pay in time. Only count it
+  // once we've seen the seat held: the hold response can beat the
+  // WebSocket update, so the map may still say "available" at first.
+  const status = seats.find((seat) => seat.id === held)?.status;
+  const seenHeld = useRef(false);
+  useEffect(() => {
+    if (status === "held") seenHeld.current = true;
+    if (status === "available" && seenHeld.current) {
+      seenHeld.current = false;
+      setError(`Your hold on ${held} expired`);
+      setHeld(undefined);
+    }
+  }, [status]);
 
   async function pick(seatId: string) {
     setError(undefined);

@@ -12,7 +12,7 @@ Demo app for a short meet-up talk on Cloudflare Workers: a ticket booking app bu
 
 No SSR framework: the front end is a client-only React app served as static assets, and the Worker is a Hono app that only handles `/api/*`.
 
-- `src/worker/`: Hono routes (`index.ts`), the `EventSale` DO and, later, the workflow and fake payments. Type-checked with Workers runtime types (root `tsconfig.json`).
+- `src/worker/`: Hono routes (`index.ts`), the `EventSale` DO, `ReservationWorkflow` and, later, fake payments. Type-checked with Workers runtime types (root `tsconfig.json`).
 - `src/client/`: React. Two pages, `index.html` (buyer, phones) and `dashboard.html` (projector), each its own Vite entry. It has its own `tsconfig.json` with DOM types, because DOM types and Workers types conflict.
 - `src/shared/`: plain types used by both. It must not import from `cloudflare:workers` or the DOM.
 - Pick an event with `?event=<id>` (default `demo`). Each event ID is its own DO.
