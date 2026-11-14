@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { configure, joinAs, newEvent, newPage, seat } from "./helpers.ts";
+import { joinAs, newEvent, newPage, seat } from "./helpers.ts";
 
 test("paying for a hold books the seat", async ({ browser }) => {
   const eventId = newEvent();
@@ -21,9 +21,8 @@ test("paying for a hold books the seat", async ({ browser }) => {
   );
 });
 
-test("a declined payment releases the seat", async ({ browser, request }) => {
-  const eventId = newEvent();
-  await configure(request, eventId, { declineRate: 1 });
+test("a declined payment releases the seat", async ({ browser }) => {
+  const eventId = newEvent("declines");
   const alice = await newPage(browser);
   const bob = await newPage(browser);
   await joinAs(alice, "Alice", eventId);
@@ -40,12 +39,8 @@ test("a declined payment releases the seat", async ({ browser, request }) => {
   await expect(alice.getByRole("list", { name: "My bookings" })).toHaveCount(0);
 });
 
-test("paying after the hold has expired is refused", async ({
-  browser,
-  request,
-}) => {
-  const eventId = newEvent();
-  await configure(request, eventId, { paymentTimeoutSeconds: 1 });
+test("paying after the hold has expired is refused", async ({ browser }) => {
+  const eventId = newEvent("short-hold");
   const alice = await newPage(browser);
   const bob = await newPage(browser);
 

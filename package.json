@@ -5,8 +5,9 @@
   "license": "ISC",
   "type": "module",
   "scripts": {
-    "dev": "pnpm db:migrate --local && cf dev",
+    "dev": "pnpm db:migrate --local && pnpm flags:seed --local && cf dev",
     "db:migrate": "node scripts/db-migrate.ts",
+    "flags:seed": "node scripts/flags-seed.ts",
     "build": "cf build",
     "deploy": "pnpm db:migrate && cf deploy",
     "typecheck": "cf workers types && tsc && tsc -p src/client && tsc -p scripts",

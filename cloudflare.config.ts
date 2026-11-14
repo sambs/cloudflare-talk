@@ -1,5 +1,6 @@
 import { bindings, defineConfig, defineWorker, exports } from "cf/config";
 import { DB_NAME, LOCAL_DB_ID } from "./database.ts";
+import { LOCAL_FLAGS_APP_ID } from "./flags.ts";
 import * as entrypoint from "./src/worker/index.ts" with { type: "cf-worker" };
 
 const worker = defineWorker({
@@ -28,6 +29,10 @@ export default defineConfig(({ mode }) => ({
       DB: bindings.d1({
         name: DB_NAME,
         id: mode === "development" ? LOCAL_DB_ID : undefined,
+      }),
+      // Feature flags. `cf deploy` creates the Flagship app the first time.
+      FLAGS: bindings.flagship({
+        id: mode === "development" ? LOCAL_FLAGS_APP_ID : undefined,
       }),
     },
   },

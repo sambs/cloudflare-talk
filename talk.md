@@ -3,3 +3,8 @@
 - Bootstrapped with `cf init`
 - Static React SPA
 - Hono - lightweight http framework
+- Flagship feature flags drive the chaos controls (`flags.ts`)
+  - One binding, `bindings.flagship()`. `cf deploy` creates the app
+  - Emulated locally, and changes apply instantly. In production they can take up to 30s
+  - Evaluated with `{ eventId }` as context, so a rule can target one event (the tests use this)
+  - The binding is read-only: flip flags in the Cloudflare dashboard or Local Explorer

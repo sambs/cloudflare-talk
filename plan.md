@@ -25,6 +25,7 @@ An event goes on sale with a fixed seat map. Buyers pick a seat, which places a 
 | **Workflow: `ReservationWorkflow`** (one instance per reservation) | Owns the **reservation lifecycle**: waits for payment, charges, records the booking, then settles the seat. Durable, with retried steps.                               |
 | **D1: `tickets`**                                                  | The **system of record** for confirmed bookings: "my bookings", check-in, refunds, reporting.                                                                          |
 | **Fake payment provider** (a function or second Worker)            | Can be configured to decline payments and to fail with transient errors.                                                                                               |
+| **Flagship: feature flags**                                        | The **chaos controls** and timeouts (decline rate, payment window). Evaluated with `{ eventId }` as context, so a targeting rule can give one event its own values.    |
 
 ### Responsibilities
 
@@ -256,10 +257,10 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 - **Seat map**, live over WebSockets: available, held (with countdown), sold. Declined seats flash before they return to the pool.
 - **Outbox panel**: entries as cards moving from pending to done, showing attempt count and next retry time.
 - **Workflow panel**: active reservations and their current step (waiting for payment, charging, retry _n_, recording, settled).
-- **Chaos controls**, all independent:
-  - **Decline-rate slider** (0–50%): seats get released and resold.
-  - **Flaky-provider toggle**: transient 503s, which Workflows step retries recover from.
-  - **Break-outbox switch**: workflow starts fail, holds pile up as "awaiting workflow", and the backlog drains when the switch is flipped back.
+- **Chaos controls**, all independent. Each is a Flagship feature flag (`flags.ts`). The Worker binding is read-only, so they're flipped in the Cloudflare dashboard (production) or the Local Explorer / `cf flagship ... --local` (local dev), not from this page:
+  - **`decline-rate`** (off, 10%, 50%, all): seats get released and resold.
+  - **Flaky-provider toggle** (not built yet): transient 503s, which Workflows step retries recover from.
+  - **Break-outbox switch** (not built yet): workflow starts fail, holds pile up as "awaiting workflow", and the backlog drains when the switch is flipped back.
 
 ---
 
@@ -293,4 +294,4 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 - How do buyers identify themselves: anonymous nickname, or a magic link?
 - Is the fake payment provider an in-process function, or a separate Worker (which would show service bindings)?
 - A fallback if venue wifi fails: pre-recorded run, or simulated buyers driven by a script?
-- Deploy to production for the demo, or run locally behind a tunnel?
+- Deploy to production for the demo, or run locally behind a tunnel? Flagship changes are instant locally but can take up to 30 seconds to apply in production, which slows down the chaos steps.

@@ -8,7 +8,7 @@ export async function charge({
   declineRate,
 }: {
   idempotencyKey: string; // a real provider uses this to dedupe retries
-  declineRate: number; // 0 to 1, set from the dashboard's chaos controls
+  declineRate: number; // 0 to 1, from the "decline-rate" feature flag
 }): Promise<ChargeResult> {
   await scheduler.wait(500); // feels like a network call
   if (Math.random() < declineRate) return { ok: false, reason: "declined" };

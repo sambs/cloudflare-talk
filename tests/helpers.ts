@@ -1,13 +1,11 @@
-import {
-  expect,
-  type APIRequestContext,
-  type Browser,
-  type Page,
-} from "@playwright/test";
-import type { SaleSettings } from "../src/shared/types.ts";
+import { expect, type Browser, type Page } from "@playwright/test";
 
-// A fresh event per test gets its own EventSale Durable Object
-export const newEvent = () => `test-${crypto.randomUUID()}`;
+// A fresh event per test gets its own EventSale Durable Object.
+// Tags switch on feature flag rules for just this event (see flags.ts):
+//   "declines"    every payment is declined
+//   "short-hold"  the payment window is 2 seconds
+export const newEvent = (...tags: ("declines" | "short-hold")[]) =>
+  ["test-" + crypto.randomUUID(), ...tags].join(".");
 
 // Each buyer gets their own browser context, like a separate phone
 export const newPage = async (browser: Browser) =>
@@ -27,15 +25,3 @@ export const seat = (page: Page, seatId: string) =>
   page
     .getByRole("list", { name: "Seat map" })
     .getByRole("button", { name: new RegExp(`^${seatId} `) });
-
-// Per-event settings, e.g. a short payment timeout so tests run fast
-export async function configure(
-  request: APIRequestContext,
-  eventId: string,
-  settings: Partial<SaleSettings>,
-) {
-  const res = await request.patch(`/api/events/${eventId}/settings`, {
-    data: settings,
-  });
-  expect(res.ok()).toBe(true);
-}

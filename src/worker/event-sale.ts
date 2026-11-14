@@ -2,7 +2,6 @@ import { DurableObject } from "cloudflare:workers";
 import type {
   HoldResult,
   PayResult,
-  SaleSettings,
   Seat,
   ServerMessage,
 } from "../shared/types.ts";
@@ -14,10 +13,6 @@ import {
 
 const ROWS = ["A", "B", "C", "D"];
 const SEATS_PER_ROW = 8;
-const DEFAULT_SETTINGS: SaleSettings = {
-  paymentTimeoutSeconds: 90,
-  declineRate: 0,
-};
 
 // If the nudge doesn't deliver an outbox entry, the alarm retries it
 const ALARM_SAFETY_NET_MS = 5_000;
@@ -81,7 +76,6 @@ export class EventSale extends DurableObject {
       eventId: this.ctx.id.name!,
       seatId,
       customer,
-      paymentTimeoutSeconds: this.settings().paymentTimeoutSeconds,
     };
 
     // Transactional outbox: the hold and the intent to start its workflow
@@ -192,15 +186,6 @@ export class EventSale extends DurableObject {
       .one();
     if (next === null) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(next);
-  }
-
-  settings(): SaleSettings {
-    const saved = this.ctx.storage.kv.get<Partial<SaleSettings>>("settings");
-    return { ...DEFAULT_SETTINGS, ...saved };
-  }
-
-  updateSettings(changes: Partial<SaleSettings>) {
-    this.ctx.storage.kv.put("settings", { ...this.settings(), ...changes });
   }
 
   // Each browser keeps a WebSocket open to the DO for live updates.

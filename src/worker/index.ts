@@ -38,12 +38,6 @@ app.get("/events/:eventId/bookings", async (c) => {
   return c.json(results);
 });
 
-// Tests (and later the dashboard) tune per-event settings like timeouts
-app.patch("/events/:eventId/settings", async (c) => {
-  await sale(c.req.param("eventId")).updateSettings(await c.req.json());
-  return c.body(null, 204);
-});
-
 // Hand the WebSocket upgrade straight to the event's DO
 app.get("/events/:eventId/ws", (c) =>
   sale(c.req.param("eventId")).fetch(c.req.raw),

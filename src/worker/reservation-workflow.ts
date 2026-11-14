@@ -11,7 +11,6 @@ export type ReservationParams = {
   eventId: string;
   seatId: string;
   customer: string;
-  paymentTimeoutSeconds: number;
 };
 
 // One instance per reservation. It owns the hold from here on:
@@ -21,15 +20,22 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
   ReservationParams
 > {
   async run(event: WorkflowEvent<ReservationParams>, step: WorkflowStep) {
-    const { reservationId, eventId, seatId, customer, paymentTimeoutSeconds } =
-      event.payload;
+    const { reservationId, eventId, seatId, customer } = event.payload;
     const sale = env.EVENT_SALE.getByName(eventId);
+    // Feature flags can serve each event its own value
+    const flagContext = { eventId };
+
+    // Read inside a step, so the value is saved and a restarted workflow
+    // waits for the same length of time
+    const paymentTimeout = await step.do("read payment window", () =>
+      env.FLAGS.getNumberValue("payment-timeout-seconds", 90, flagContext),
+    );
 
     // Durable wait: survives restarts. Timing out means the buyer gave up.
     const paid = await step
       .waitForEvent("payment submitted", {
         type: "pay",
-        timeout: `${paymentTimeoutSeconds} seconds` as const,
+        timeout: `${paymentTimeout} seconds` as const,
       })
       .then(
         () => true,
@@ -43,7 +49,11 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
           "charge",
           { retries: { limit: 3, delay: "1 second", backoff: "exponential" } },
           async () => {
-            const { declineRate } = await sale.settings();
+            const declineRate = await env.FLAGS.getNumberValue(
+              "decline-rate",
+              0,
+              flagContext,
+            );
             return charge({ idempotencyKey: reservationId, declineRate });
           },
         )

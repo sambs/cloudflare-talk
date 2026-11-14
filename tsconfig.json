@@ -17,6 +17,7 @@
     "tests",
     "cloudflare.config.ts",
     "database.ts",
+    "flags.ts",
     "playwright.config.ts",
     ".cloudflare/types"
   ],

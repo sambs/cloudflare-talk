@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { configure, joinAs, newEvent, newPage, seat } from "./helpers.ts";
+import { joinAs, newEvent, newPage, seat } from "./helpers.ts";
 
 test("a held seat updates live for every buyer and the dashboard", async ({
   browser,
@@ -54,10 +54,8 @@ test("the DO rejects a second hold, even from an out-of-date seat map", async ({
 
 test("an unpaid hold is released when the payment window closes", async ({
   browser,
-  request,
 }) => {
-  const eventId = newEvent();
-  await configure(request, eventId, { paymentTimeoutSeconds: 2 });
+  const eventId = newEvent("short-hold");
   const alice = await newPage(browser);
   const bob = await newPage(browser);
   await joinAs(alice, "Alice", eventId);
