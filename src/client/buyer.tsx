@@ -81,6 +81,7 @@ function SeatPicker({ nickname }: { nickname: string }) {
   }
 
   async function pay(hold: Hold) {
+    setError(undefined);
     const result = await paySeat(hold.reservationId);
     if ("error" in result) setError(result.error);
     else setHold({ ...hold, paying: true });

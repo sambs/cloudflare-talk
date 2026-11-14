@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 import type { Booking } from "../shared/types.ts";
+import { submitPayment } from "./reservation-workflow.ts";
 
 export { EventSale } from "./event-sale.ts";
 export { ReservationWorkflow } from "./reservation-workflow.ts";
@@ -21,9 +22,9 @@ app.post("/events/:eventId/hold", async (c) => {
   return c.json(result, "error" in result ? 409 : 200);
 });
 
+// Goes straight to the reservation's workflow: no DO needed
 app.post("/events/:eventId/reservations/:reservationId/pay", async (c) => {
-  const { eventId, reservationId } = c.req.param();
-  const result = await sale(eventId).pay(reservationId);
+  const result = await submitPayment(c.req.param("reservationId"));
   return c.json(result, "error" in result ? 409 : 202);
 });
 

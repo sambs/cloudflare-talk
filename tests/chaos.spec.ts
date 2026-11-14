@@ -88,16 +88,22 @@ test("a broken outbox delays the workflow, then the backlog drains", async ({
   await seat(alice, "A1").click();
   await expect(seat(dashboard, "A1")).toHaveAccessibleName("A1 held");
 
-  await alice.getByRole("button", { name: "Pay" }).click();
+  // But its workflow hasn't started, so there's nothing to pay into yet
+  const pay = alice.getByRole("button", { name: "Pay" });
+  await pay.click();
+  await expect(alice.getByRole("alert")).toHaveText(
+    "Payment isn't ready yet, try again",
+  );
 
-  // A payment normally takes about half a second. With the outbox broken,
-  // neither the workflow start nor the pay event gets through.
-  await alice.waitForTimeout(2_000);
-  await expect(alice.getByText("Processing payment…")).toBeVisible();
-  await expect(seat(dashboard, "A1")).toHaveAccessibleName("A1 held");
-
-  // Fixing it doesn't touch the outbox. Its next retry just succeeds.
+  // Fixing it doesn't touch the outbox: its next retry just succeeds.
+  // Alice keeps tapping Pay until the workflow has started.
   await breakOutbox.uncheck();
+  await expect(async () => {
+    await pay.click();
+    await expect(alice.getByText("Processing payment…")).toBeVisible({
+      timeout: 500,
+    });
+  }).toPass();
   await expect(alice.getByRole("status")).toHaveText("You're booked into A1");
   await expect(seat(dashboard, "A1")).toHaveAccessibleName("A1 sold");
 });

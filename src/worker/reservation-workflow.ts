@@ -4,6 +4,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import type { PayResult } from "../shared/types.ts";
 import { charge, type ChargeResult } from "./payments.ts";
 
 export type ReservationParams = {
@@ -69,11 +70,9 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
   }
 }
 
-// The functions below are called by the DO's outbox, which retries them
-// until they succeed. Both are safe to run more than once.
-
+// Called by the DO's outbox, which retries it until it succeeds.
 // The instance ID is the reservationId, so a retry can never start a
-// second workflow for the same hold
+// second workflow for the same hold.
 export async function startReservation(params: ReservationParams) {
   const { errors } = await env.RESERVATION.createBatch({
     instances: [{ id: params.reservationId, params }],
@@ -85,14 +84,21 @@ export async function startReservation(params: ReservationParams) {
   }
 }
 
-export async function deliverPayment({
-  reservationId,
-}: {
-  reservationId: string;
-}) {
-  const instance = await env.RESERVATION.get(reservationId);
+// Paying needs no coordination, so it skips the DO and asks the workflow,
+// which owns the hold. If the workflow isn't waiting yet, the event is
+// buffered until it is.
+export async function submitPayment(reservationId: string): Promise<PayResult> {
+  let instance: WorkflowInstance;
+  try {
+    instance = await env.RESERVATION.get(reservationId);
+  } catch {
+    // The outbox hasn't started this reservation's workflow yet
+    return { error: "Payment isn't ready yet, try again" };
+  }
   const { status } = await instance.status();
-  // Already finished (the hold expired), so nobody is waiting to be paid
-  if (["complete", "errored", "terminated"].includes(status)) return;
+  if (["complete", "errored", "terminated"].includes(status)) {
+    return { error: "Your hold has expired" };
+  }
   await instance.sendEvent({ type: "pay", payload: {} });
+  return { ok: true };
 }

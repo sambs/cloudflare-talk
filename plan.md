@@ -54,9 +54,7 @@ sequenceDiagram
     DO--)B: WebSocket: seat held (all clients)
 
     B->>W: POST /reservations/:id/pay
-    W->>DO: pay(reservationId)
-    Note over DO: outbox += deliver-pay-event
-    DO->>WF: instance.sendEvent({ type: "pay" })
+    W->>WF: instance.sendEvent({ type: "pay" })
 
     WF->>P: step "charge" (retried on transient errors)
     alt payment ok
@@ -73,7 +71,7 @@ sequenceDiagram
 1. **Hold.** The DO checks that the seat is free and marks it `held` by a new `reservationId`. In the **same transaction** it adds an outbox entry `start-reservation`. Because the DO handles one request at a time, two holds on the same seat can never race.
 2. **Dispatch (outbox).** At the end of the request a **nudge** tries to dispatch immediately: `env.RESERVATION.create({ id: reservationId, params })`. If that fails, or the isolate is evicted first, the DO's **alarm** retries with backoff.
 3. **Wait for payment.** The workflow waits with `step.waitForEvent("payment submitted", { type: "pay", timeout: "90 seconds" })`. A timeout is treated as abandonment.
-4. **Pay.** The buyer taps Pay. The DO records the payment intent and an outbox entry that delivers the `pay` event to the workflow instance. This is the same pattern again: the state change and the intent to notify are committed together.
+4. **Pay.** The buyer taps Pay. The Worker sends the `pay` event straight to the workflow instance, without going through the DO. Paying changes no DO state, so there's no dual write and no need for the outbox. Sending synchronously means a failure is reported to the buyer, who can tap again while the window is open. A finished instance means the hold has expired. A missing instance means the outbox hasn't started it yet, so the buyer is told to try again.
 5. **Charge.** `step.do("charge", { retries }, ...)` calls the fake provider with `idempotencyKey: reservationId`.
    - **Transient error** (timeout or 503): Workflows retries automatically.
    - **Decline**: return `{ ok: false }` (or throw `NonRetryableError`).
@@ -124,7 +122,7 @@ CREATE TABLE seats (
 
 CREATE TABLE outbox (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  type         TEXT NOT NULL,          -- 'start-reservation' | 'deliver-pay-event'
+  type         TEXT NOT NULL,          -- 'start-reservation'
   payload      TEXT NOT NULL,          -- JSON
   status       TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done'
   attempts     INTEGER NOT NULL DEFAULT 0,
@@ -179,7 +177,7 @@ async dispatchOutbox() {
 async alarm() { await this.dispatchOutbox(); }
 ```
 
-The nudge is called at the end of `hold()` and `pay()`, for example via `this.ctx.waitUntil(this.dispatchOutbox())`.
+The nudge is called at the end of `hold()`, for example via `this.ctx.waitUntil(this.dispatchOutbox())`.
 
 ### Workflow
 
@@ -269,7 +267,7 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 2. **QR code on screen.** The audience opens the event and the sale starts. Watch the map fill up and point out that there's no double-booking, with no locks written.
 3. **Turn up the decline rate.** Seats come back and there's a second rush. Explain how the workflow owns the hold, and how decline differs from timeout.
 4. **Make the provider flaky.** Payments still succeed after retries. Explain step retries and the idempotency key.
-5. **Break the outbox.** Holds succeed but the workflows don't start, and the outbox piles up. Flip it back and the backlog drains. Explain atomic writes, the nudge and the alarm.
+5. **Break the outbox.** Holds succeed but the workflows don't start, and the outbox piles up. Paying for those holds is refused until their workflows exist. Flip it back and the backlog drains. Explain atomic writes, the nudge and the alarm.
 6. **Finish on D1.** Run `SELECT * FROM bookings` live: the record of tonight's sale. Maybe add a leaderboard (fastest payer, most declines).
 
 ---
