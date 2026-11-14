@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import type { HoldResult, Seat, ServerMessage } from "../shared/types.ts";
+import type {
+  Booking,
+  HoldResult,
+  PayResult,
+  Seat,
+  ServerMessage,
+} from "../shared/types.ts";
 
 // Each event has its own EventSale Durable Object. Pick one with ?event=
 export const eventId =
@@ -34,4 +40,26 @@ export async function holdSeat(
     body: JSON.stringify({ seatId, customer }),
   });
   return res.json();
+}
+
+export async function paySeat(reservationId: string): Promise<PayResult> {
+  const res = await fetch(
+    `/api/events/${eventId}/reservations/${reservationId}/pay`,
+    { method: "POST" },
+  );
+  return res.json();
+}
+
+// Confirmed bookings from D1. Pass a changing `refresh` value to reload.
+export function useBookings(customer: string, refresh: unknown) {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    const query = new URLSearchParams({ customer });
+    fetch(`/api/events/${eventId}/bookings?${query}`)
+      .then((res) => res.json())
+      .then(setBookings);
+  }, [customer, refresh]);
+
+  return bookings;
 }

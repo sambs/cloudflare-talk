@@ -1,23 +1,39 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
   HoldResult,
+  PayResult,
   SaleSettings,
   Seat,
   ServerMessage,
 } from "../shared/types.ts";
 import {
+  deliverPayment,
   startReservation,
   type ReservationParams,
 } from "./reservation-workflow.ts";
 
 const ROWS = ["A", "B", "C", "D"];
 const SEATS_PER_ROW = 8;
-const DEFAULT_SETTINGS: SaleSettings = { paymentTimeoutSeconds: 90 };
+const DEFAULT_SETTINGS: SaleSettings = {
+  paymentTimeoutSeconds: 90,
+  declineRate: 0,
+};
 
 // If the nudge doesn't deliver an outbox entry, the alarm retries it
 const ALARM_SAFETY_NET_MS = 5_000;
 
-type OutboxEntry = { id: number; payload: string; attempts: number };
+// What each kind of outbox entry does when it's delivered
+const deliver = {
+  "start-reservation": startReservation,
+  "deliver-pay-event": deliverPayment,
+};
+
+type OutboxEntry = {
+  id: number;
+  type: keyof typeof deliver;
+  payload: string;
+  attempts: number;
+};
 
 // One instance per event: owns the live seat map for that sale
 export class EventSale extends DurableObject {
@@ -79,19 +95,30 @@ export class EventSale extends DurableObject {
         seatId,
       );
       if (rowsWritten === 0) return false;
-      this.sql.exec(
-        `INSERT INTO outbox (type, payload, next_attempt) VALUES ('start-reservation', ?, ?)`,
-        JSON.stringify(params),
-        Date.now(),
-      );
+      this.enqueue("start-reservation", params);
       return true;
     });
     if (!held) return { error: "Seat not available" };
 
-    this.ctx.storage.setAlarm(Date.now() + ALARM_SAFETY_NET_MS);
-    this.ctx.waitUntil(this.dispatchOutbox()); // the nudge: deliver right away
+    this.nudge();
     this.broadcast();
     return { reservationId: params.reservationId };
+  }
+
+  // Same pattern again: record the intent to tell the workflow, then
+  // let the outbox deliver it
+  pay(reservationId: string): PayResult {
+    const [seat] = this.sql
+      .exec(
+        "SELECT id FROM seats WHERE reservation_id = ? AND status = 'held'",
+        reservationId,
+      )
+      .toArray();
+    if (!seat) return { error: "Your hold has expired" };
+
+    this.enqueue("deliver-pay-event", { reservationId });
+    this.nudge();
+    return { ok: true };
   }
 
   // Called by the workflow. Only touches a seat still held by this
@@ -112,18 +139,35 @@ export class EventSale extends DurableObject {
     await this.dispatchOutbox();
   }
 
+  private enqueue(type: OutboxEntry["type"], payload: object) {
+    this.sql.exec(
+      "INSERT INTO outbox (type, payload, next_attempt) VALUES (?, ?, ?)",
+      type,
+      JSON.stringify(payload),
+      Date.now(),
+    );
+  }
+
+  // Try to deliver right away. If that fails, or this instance is evicted
+  // first, the alarm picks it up.
+  private nudge() {
+    this.ctx.storage.setAlarm(Date.now() + ALARM_SAFETY_NET_MS);
+    this.ctx.waitUntil(this.dispatchOutbox());
+  }
+
   private async dispatchOutbox() {
     const due = this.sql
       .exec<OutboxEntry>(
-        `SELECT id, payload, attempts FROM outbox
-         WHERE status = 'pending' AND next_attempt <= ?`,
+        `SELECT id, type, payload, attempts FROM outbox
+         WHERE status = 'pending' AND next_attempt <= ?
+         ORDER BY id`,
         Date.now(),
       )
       .toArray();
 
     for (const entry of due) {
       try {
-        await startReservation(JSON.parse(entry.payload));
+        await deliver[entry.type](JSON.parse(entry.payload));
         this.sql.exec(
           "UPDATE outbox SET status = 'done' WHERE id = ?",
           entry.id,

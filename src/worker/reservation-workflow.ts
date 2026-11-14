@@ -4,6 +4,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
+import { charge, type ChargeResult } from "./payments.ts";
 
 export type ReservationParams = {
   reservationId: string;
@@ -20,25 +21,58 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
   ReservationParams
 > {
   async run(event: WorkflowEvent<ReservationParams>, step: WorkflowStep) {
-    const { reservationId, eventId, paymentTimeoutSeconds } = event.payload;
+    const { reservationId, eventId, seatId, customer, paymentTimeoutSeconds } =
+      event.payload;
+    const sale = env.EVENT_SALE.getByName(eventId);
 
     // Durable wait: survives restarts. Timing out means the buyer gave up.
-    // (Paying comes next; until then every hold times out.)
-    await step
+    const paid = await step
       .waitForEvent("payment submitted", {
         type: "pay",
         timeout: `${paymentTimeoutSeconds} seconds` as const,
       })
-      .catch(() => null);
+      .then(
+        () => true,
+        () => false,
+      );
 
-    await step.do("release seat", () =>
-      env.EVENT_SALE.getByName(eventId).settle(reservationId, false),
+    // Retried on transient errors (the idempotency key makes that safe).
+    // Once it succeeds, the result is saved and never re-run.
+    const result: ChargeResult = paid
+      ? await step.do(
+          "charge",
+          { retries: { limit: 3, delay: "1 second", backoff: "exponential" } },
+          async () => {
+            const { declineRate } = await sale.settings();
+            return charge({ idempotencyKey: reservationId, declineRate });
+          },
+        )
+      : { ok: false, reason: "timeout" };
+
+    // Record the booking before marking the seat sold. If we stall in
+    // between, the buyer still has their booking.
+    if (result.ok) {
+      await step.do("record booking", async () => {
+        await env.DB.prepare(
+          `INSERT INTO bookings (id, event_id, seat_id, customer, payment_ref)
+           VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING`,
+        )
+          .bind(reservationId, eventId, seatId, customer, result.ref)
+          .run();
+      });
+    }
+
+    await step.do(result.ok ? "mark sold" : "release seat", () =>
+      sale.settle(reservationId, result.ok),
     );
   }
 }
 
-// Called by the DO's outbox. The instance ID is the reservationId, so a
-// retry can never start a second workflow for the same hold.
+// The functions below are called by the DO's outbox, which retries them
+// until they succeed. Both are safe to run more than once.
+
+// The instance ID is the reservationId, so a retry can never start a
+// second workflow for the same hold
 export async function startReservation(params: ReservationParams) {
   const { errors } = await env.RESERVATION.createBatch({
     instances: [{ id: params.reservationId, params }],
@@ -48,4 +82,16 @@ export async function startReservation(params: ReservationParams) {
   if (errors.length > 0 && errors[0].code !== 10405) {
     throw new Error(errors[0].message);
   }
+}
+
+export async function deliverPayment({
+  reservationId,
+}: {
+  reservationId: string;
+}) {
+  const instance = await env.RESERVATION.get(reservationId);
+  const { status } = await instance.status();
+  // Already finished (the hold expired), so nobody is waiting to be paid
+  if (["complete", "errored", "terminated"].includes(status)) return;
+  await instance.sendEvent({ type: "pay", payload: {} });
 }

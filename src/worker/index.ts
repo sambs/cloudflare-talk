@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
+import type { Booking } from "../shared/types.ts";
 
 export { EventSale } from "./event-sale.ts";
 export { ReservationWorkflow } from "./reservation-workflow.ts";
@@ -18,6 +19,23 @@ app.post("/events/:eventId/hold", async (c) => {
   }
   const result = await sale(c.req.param("eventId")).hold(seatId, customer);
   return c.json(result, "error" in result ? 409 : 200);
+});
+
+app.post("/events/:eventId/reservations/:reservationId/pay", async (c) => {
+  const { eventId, reservationId } = c.req.param();
+  const result = await sale(eventId).pay(reservationId);
+  return c.json(result, "error" in result ? 409 : 202);
+});
+
+// Confirmed bookings come from D1, the system of record
+app.get("/events/:eventId/bookings", async (c) => {
+  const { results } = await env.DB.prepare(
+    `SELECT id, seat_id AS seatId FROM bookings
+     WHERE event_id = ? AND customer = ? ORDER BY created_at`,
+  )
+    .bind(c.req.param("eventId"), c.req.query("customer") ?? "")
+    .run<Booking>();
+  return c.json(results);
 });
 
 // Tests (and later the dashboard) tune per-event settings like timeouts
