@@ -46,10 +46,10 @@ pnpm test
 
 ## Commands
 
-| Command           | What it does                                      |
-| ----------------- | ------------------------------------------------- |
-| `pnpm dev`        | Local dev server                                  |
-| `pnpm test`       | Run the Playwright tests                          |
-| `pnpm typecheck`  | Generate Worker types, then run `tsc`             |
-| `pnpm format`     | Format the code with Prettier                     |
-| `pnpm run deploy` | Deploy to Cloudflare (needs a Cloudflare account) |
+| Command           | What it does                                                                |
+| ----------------- | --------------------------------------------------------------------------- |
+| `pnpm dev`        | Local dev server                                                            |
+| `pnpm test`       | Run the Playwright tests                                                    |
+| `pnpm typecheck`  | Generate Worker types, then run `tsc`                                       |
+| `pnpm format`     | Format the code with Prettier                                               |
+| `pnpm run deploy` | Apply D1 migrations, then deploy to Cloudflare (needs a Cloudflare account) |

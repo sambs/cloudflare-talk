@@ -14,17 +14,18 @@ No SSR framework: the front end is a client-only React app served as static asse
 
 - `src/worker/`: Hono routes (`index.ts`), the `EventSale` DO, `ReservationWorkflow` and the fake payment provider (`payments.ts`). Type-checked with Workers runtime types (root `tsconfig.json`).
 - `src/client/`: React. Two pages, `index.html` (buyer, phones) and `dashboard.html` (projector), each its own Vite entry. It has its own `tsconfig.json` with DOM types, because DOM types and Workers types conflict.
-- `migrations/`: D1 schema. `pnpm dev` applies it to the local database first. In development mode the D1 binding has a fixed local ID (`LOCAL_DB_ID` in `cloudflare.config.ts`), because `cf d1 migrations apply --local` only accepts an ID. In production it's bound by name.
+- `migrations/`: D1 schema, applied by `scripts/db-migrate.ts` (`pnpm db:migrate`). `cf d1 migrations apply` only accepts a database ID, so the script looks up the production database by name (creating it if needed). Locally the D1 binding gets a fixed ID, `LOCAL_DB_ID` in `database.ts`.
+- `scripts/`: Node scripts, with their own `tsconfig.json` and Node types.
 - `src/shared/`: plain types used by both. It must not import from `cloudflare:workers` or the DOM.
 - Pick an event with `?event=<id>` (default `demo`). Each event ID is its own DO.
 
 ## Commands
 
 - `pnpm dev`: apply D1 migrations locally, then start the local dev server (DOs, Workflows and D1 all run locally)
-- `pnpm db:migrate`: apply D1 migrations to the local database
+- `pnpm db:migrate`: apply D1 migrations to production, creating the database if needed. Add `--local` for the local database.
 - `pnpm typecheck`: generate Worker types, then run `tsc`
 - `pnpm format`: run Prettier (also runs on staged files via a husky pre-commit hook)
-- `pnpm run deploy`: deploy to Cloudflare (plain `pnpm deploy` is pnpm's built-in workspace deploy, not this script)
+- `pnpm run deploy`: apply D1 migrations to production, then deploy to Cloudflare (plain `pnpm deploy` is pnpm's built-in workspace deploy, not this script)
 
 ## Testing
 

@@ -1,0 +1,8 @@
+{
+  // Scripts run in Node, so they get Node types instead of Workers types
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["."]
+}

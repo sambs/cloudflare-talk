@@ -5,11 +5,11 @@
   "license": "ISC",
   "type": "module",
   "scripts": {
-    "dev": "pnpm db:migrate && cf dev",
-    "db:migrate": "cf d1 migrations apply 00000000-0000-4000-8000-000000000000 --local",
+    "dev": "pnpm db:migrate --local && cf dev",
+    "db:migrate": "node scripts/db-migrate.ts",
     "build": "cf build",
-    "deploy": "cf deploy",
-    "typecheck": "cf workers types && tsc && tsc -p src/client",
+    "deploy": "pnpm db:migrate && cf deploy",
+    "typecheck": "cf workers types && tsc && tsc -p src/client && tsc -p scripts",
     "test": "playwright test",
     "format": "prettier --write .",
     "prepare": "husky"
@@ -20,6 +20,7 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "beta",
     "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
