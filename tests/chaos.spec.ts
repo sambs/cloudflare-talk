@@ -76,7 +76,7 @@ test("the outbox keeps retrying workflow starts until they succeed", async ({
 }) => {
   const eventId = newEvent();
   // Keep the outbox's retries close together so the backlog drains quickly
-  await configure(request, eventId, { outboxMaxBackoffSeconds: 1 });
+  await configure(request, eventId, { outboxRetrySeconds: 1 });
   const dashboard = await openDashboard(browser, eventId);
   const alice = await newPage(browser);
   await joinAs(alice, "Alice", eventId);

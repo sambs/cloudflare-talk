@@ -14,16 +14,13 @@ const ROWS = ["A", "B", "C", "D"];
 const SEATS_PER_ROW = 8;
 const DEFAULT_SETTINGS: SaleSettings = {
   paymentTimeoutSeconds: 90,
-  outboxMaxBackoffSeconds: 30,
+  outboxRetrySeconds: 5,
   declineRate: 0,
   failNextCharges: 0,
   failWorkflowStarts: false,
 };
 
-// If the nudge doesn't deliver an outbox entry, the alarm retries it
-const ALARM_SAFETY_NET_MS = 5_000;
-
-type OutboxEntry = { id: number; payload: string; attempts: number };
+type OutboxEntry = { id: number; params: string };
 
 // One instance per event: owns the live seat map for that sale
 export class EventSale extends DurableObject {
@@ -38,14 +35,10 @@ export class EventSale extends DurableObject {
         reservation_id TEXT,
         held_at        INTEGER
       );
+      -- Workflows still to start. A row is deleted once its workflow starts.
       CREATE TABLE IF NOT EXISTS outbox (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        type         TEXT NOT NULL,
-        payload      TEXT NOT NULL,
-        status       TEXT NOT NULL DEFAULT 'pending',
-        attempts     INTEGER NOT NULL DEFAULT 0,
-        next_attempt INTEGER NOT NULL,
-        last_error   TEXT
+        id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        params TEXT NOT NULL
       );
     `);
     const { count } = this.sql
@@ -74,7 +67,7 @@ export class EventSale extends DurableObject {
       paymentTimeoutSeconds: this.settings().paymentTimeoutSeconds,
     };
 
-    this.armSafetyNet();
+    this.scheduleRetry();
     // Transactional outbox: the hold and the intent to start its workflow
     // are committed together, or not at all
     const held = this.ctx.storage.transactionSync(() => {
@@ -87,10 +80,8 @@ export class EventSale extends DurableObject {
       );
       if (rowsWritten === 0) return false;
       this.sql.exec(
-        `INSERT INTO outbox (type, payload, next_attempt)
-         VALUES ('start-reservation', ?, ?)`,
+        "INSERT INTO outbox (params) VALUES (?)",
         JSON.stringify(params),
-        Date.now(),
       );
       return true;
     });
@@ -121,8 +112,9 @@ export class EventSale extends DurableObject {
 
   // Set the alarm *before* writing to the outbox. If this object dies in
   // between, the worst case is an alarm that finds nothing to do.
-  private armSafetyNet() {
-    this.ctx.storage.setAlarm(Date.now() + ALARM_SAFETY_NET_MS);
+  private scheduleRetry() {
+    const delay = this.settings().outboxRetrySeconds * 1000;
+    this.ctx.storage.setAlarm(Date.now() + delay);
   }
 
   // Try to deliver right away. If that fails, or this instance is evicted
@@ -132,45 +124,23 @@ export class EventSale extends DurableObject {
   }
 
   private async dispatchOutbox() {
-    const due = this.sql
-      .exec<OutboxEntry>(
-        `SELECT id, payload, attempts FROM outbox
-         WHERE status = 'pending' AND next_attempt <= ?
-         ORDER BY id`,
-        Date.now(),
-      )
+    const pending = this.sql
+      .exec<OutboxEntry>("SELECT id, params FROM outbox ORDER BY id")
       .toArray();
 
-    for (const entry of due) {
+    for (const entry of pending) {
       try {
-        await startReservation(JSON.parse(entry.payload), {
+        await startReservation(JSON.parse(entry.params), {
           unavailable: this.settings().failWorkflowStarts,
         });
-        this.sql.exec(
-          "UPDATE outbox SET status = 'done' WHERE id = ?",
-          entry.id,
-        );
-      } catch (err) {
-        const maxDelay = this.settings().outboxMaxBackoffSeconds * 1000;
-        const delay = Math.min(maxDelay, 500 * 2 ** entry.attempts);
-        this.sql.exec(
-          `UPDATE outbox SET attempts = attempts + 1, next_attempt = ?, last_error = ?
-           WHERE id = ?`,
-          Date.now() + delay,
-          String(err),
-          entry.id,
-        );
+      } catch {
+        // Workflows is either up or down, so don't bother with the rest.
+        // The alarm retries the whole outbox later.
+        this.scheduleRetry();
+        return;
       }
+      this.sql.exec("DELETE FROM outbox WHERE id = ?", entry.id);
     }
-
-    // Wake up again for the next pending entry. The alarm is never
-    // cancelled: if the outbox is empty when it fires, it does nothing.
-    const { next } = this.sql
-      .exec<{ next: number | null }>(
-        "SELECT MIN(next_attempt) AS next FROM outbox WHERE status = 'pending'",
-      )
-      .one();
-    if (next !== null) await this.ctx.storage.setAlarm(next);
   }
 
   settings(): SaleSettings {

@@ -17,7 +17,7 @@ export type Booking = { id: string; seatId: string };
 // tests turn down so they run fast
 export type SaleSettings = {
   paymentTimeoutSeconds: number;
-  outboxMaxBackoffSeconds: number; // cap on the delay between outbox retries
+  outboxRetrySeconds: number; // how often the alarm retries a pending outbox
   declineRate: number; // 0 to 1
   failNextCharges: number; // the provider returns 503 for this many calls
   failWorkflowStarts: boolean; // creating a workflow fails while this is on

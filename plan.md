@@ -69,7 +69,7 @@ sequenceDiagram
 ### Steps
 
 1. **Hold.** The DO checks that the seat is free and marks it `held` by a new `reservationId`. In the **same transaction** it adds an outbox entry `start-reservation`. Because the DO handles one request at a time, two holds on the same seat can never race.
-2. **Dispatch (outbox).** At the end of the request a **nudge** tries to dispatch immediately: `env.RESERVATION.create({ id: reservationId, params })`. If that fails, or the isolate is evicted first, the DO's **alarm** retries with backoff.
+2. **Dispatch (outbox).** At the end of the request a **nudge** tries to dispatch immediately: `env.RESERVATION.create({ id: reservationId, params })`. If that fails, or the isolate is evicted first, the DO's **alarm** retries the whole outbox every few seconds. The outbox only starts workflows, and Workflows is either up or down, so there's no per-entry retry state: the first failure stops the run, and the next alarm tries again.
 3. **Wait for payment.** The workflow waits with `step.waitForEvent("payment submitted", { type: "pay", timeout: "90 seconds" })`. A timeout is treated as abandonment.
 4. **Pay.** The buyer taps Pay. The Worker sends the `pay` event straight to the workflow instance, without going through the DO. Paying changes no DO state, so there's no dual write and no need for the outbox. Sending synchronously means a failure is reported to the buyer, who can tap again while the window is open. A finished instance means the hold has expired. A missing instance means the outbox hasn't started it yet, so the buyer is told to try again.
 5. **Charge.** `step.do("charge", { retries }, ...)` calls the fake provider with `idempotencyKey: reservationId`.
@@ -120,14 +120,10 @@ CREATE TABLE seats (
   held_at        INTEGER
 );
 
+-- Workflows still to start. A row is deleted once its workflow starts.
 CREATE TABLE outbox (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  type         TEXT NOT NULL,          -- 'start-reservation'
-  payload      TEXT NOT NULL,          -- JSON
-  status       TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'done'
-  attempts     INTEGER NOT NULL DEFAULT 0,
-  next_attempt INTEGER NOT NULL,
-  last_error   TEXT
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  params TEXT NOT NULL                 -- JSON
 );
 ```
 
@@ -153,30 +149,24 @@ CREATE TABLE bookings (
 
 ```js
 async dispatchOutbox() {
-  const due = this.sql.exec(
-    `SELECT * FROM outbox WHERE status = 'pending' AND next_attempt <= ?`, Date.now()
-  ).toArray();
+  const pending = this.sql.exec(`SELECT * FROM outbox ORDER BY id`).toArray();
 
-  for (const entry of due) {
+  for (const entry of pending) {
     try {
-      await this.handlers[entry.type](JSON.parse(entry.payload));
-      this.sql.exec(`UPDATE outbox SET status = 'done' WHERE id = ?`, entry.id);
-    } catch (err) {
-      const delay = Math.min(30_000, 500 * 2 ** entry.attempts);
-      this.sql.exec(
-        `UPDATE outbox SET attempts = attempts + 1, next_attempt = ?, last_error = ? WHERE id = ?`,
-        Date.now() + delay, String(err), entry.id
-      );
+      await startReservation(JSON.parse(entry.params));
+    } catch {
+      // Workflows is down: stop, and let the alarm retry everything later
+      this.scheduleRetry();
+      return;
     }
-    this.broadcastOutboxState();
+    this.sql.exec(`DELETE FROM outbox WHERE id = ?`, entry.id);
   }
-  await this.scheduleAlarmIfPending();
 }
 
 async alarm() { await this.dispatchOutbox(); }
 ```
 
-The nudge is called at the end of `hold()`, for example via `this.ctx.waitUntil(this.dispatchOutbox())`.
+`hold()` calls `scheduleRetry()` (an alarm a few seconds out) before writing the outbox entry, and the nudge at the end, via `this.ctx.waitUntil(this.dispatchOutbox())`.
 
 ### Workflow
 
@@ -251,7 +241,7 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 ## 8. Dashboard (projector)
 
 - **Seat map**, live over WebSockets: available, held (with countdown), sold. Declined seats flash before they return to the pool.
-- **Outbox panel**: entries as cards moving from pending to done, showing attempt count and next retry time.
+- **Outbox panel**: pending entries as cards, which disappear once their workflow starts.
 - **Workflow panel**: active reservations and their current step (waiting for payment, charging, retry _n_, recording, settled).
 - **Chaos controls**, all independent. Each one simulates a failing dependency at a boundary, never a broken mechanism of our own:
   - **Decline-rate slider** (0–100%): seats get released and resold.
