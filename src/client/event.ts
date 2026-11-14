@@ -3,31 +3,38 @@ import type {
   Booking,
   HoldResult,
   PayResult,
-  Seat,
-  ServerMessage,
+  SaleSettings,
+  SaleState,
 } from "../shared/types.ts";
 
 // Each event has its own EventSale Durable Object. Pick one with ?event=
 export const eventId =
   new URLSearchParams(location.search).get("event") ?? "demo";
 
-// Live seat map, pushed by the DO over a WebSocket
-export function useSeats() {
-  const [seats, setSeats] = useState<Seat[]>([]);
+// Live seat map and settings, pushed by the DO over a WebSocket.
+// Undefined until the first message arrives.
+export function useSale() {
+  const [state, setState] = useState<SaleState>();
 
   useEffect(() => {
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(
       `${protocol}//${location.host}/api/events/${eventId}/ws`,
     );
-    ws.onmessage = (event) => {
-      const message: ServerMessage = JSON.parse(event.data);
-      if (message.type === "seats") setSeats(message.seats);
-    };
+    ws.onmessage = (event) => setState(JSON.parse(event.data));
     return () => ws.close();
   }, []);
 
-  return seats;
+  return state;
+}
+
+// The DO pushes the new settings to every client once they're saved
+export async function updateSettings(changes: Partial<SaleSettings>) {
+  await fetch(`/api/events/${eventId}/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(changes),
+  });
 }
 
 export async function holdSeat(

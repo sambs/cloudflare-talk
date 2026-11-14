@@ -22,6 +22,13 @@ export async function joinAs(page: Page, nickname: string, eventId: string) {
   ).toBeVisible();
 }
 
+export async function openDashboard(browser: Browser, eventId: string) {
+  const page = await newPage(browser);
+  await page.goto(`/dashboard.html?event=${eventId}`);
+  await expect(page.getByRole("heading", { name: "Chaos" })).toBeVisible();
+  return page;
+}
+
 // A seat's accessible name is "<id> <status>", e.g. "A1 held"
 export const seat = (page: Page, seatId: string) =>
   page

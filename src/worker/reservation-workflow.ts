@@ -42,10 +42,11 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
       ? await step.do(
           "charge",
           { retries: { limit: 3, delay: "1 second", backoff: "exponential" } },
-          async () => {
-            const { declineRate } = await sale.settings();
-            return charge({ idempotencyKey: reservationId, declineRate });
-          },
+          async () =>
+            charge({
+              idempotencyKey: reservationId,
+              ...(await sale.paymentChaos()),
+            }),
         )
       : { ok: false, reason: "timeout" };
 

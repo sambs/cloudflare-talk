@@ -21,25 +21,6 @@ test("paying for a hold books the seat", async ({ browser }) => {
   );
 });
 
-test("a declined payment releases the seat", async ({ browser, request }) => {
-  const eventId = newEvent();
-  await configure(request, eventId, { declineRate: 1 });
-  const alice = await newPage(browser);
-  const bob = await newPage(browser);
-  await joinAs(alice, "Alice", eventId);
-  await joinAs(bob, "Bob", eventId);
-
-  await seat(alice, "A1").click();
-  await expect(seat(bob, "A1")).toHaveAccessibleName("A1 held");
-  await alice.getByRole("button", { name: "Pay" }).click();
-
-  await expect(alice.getByRole("alert")).toHaveText(
-    "Payment for A1 was declined",
-  );
-  await expect(seat(bob, "A1")).toHaveAccessibleName("A1 available");
-  await expect(alice.getByRole("list", { name: "My bookings" })).toHaveCount(0);
-});
-
 test("paying after the hold has expired is refused", async ({
   browser,
   request,

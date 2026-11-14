@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { holdSeat, paySeat, useBookings, useSeats } from "./event.ts";
+import { holdSeat, paySeat, useBookings, useSale } from "./event.ts";
 import { SeatMap } from "./SeatMap.tsx";
 import "./styles.css";
 
@@ -42,7 +42,7 @@ function NicknameForm({ onSave }: { onSave: (name: string) => void }) {
 type Hold = { seatId: string; reservationId: string; paying: boolean };
 
 function SeatPicker({ nickname }: { nickname: string }) {
-  const seats = useSeats();
+  const seats = useSale()?.seats ?? [];
   const [hold, setHold] = useState<Hold>();
   const [booked, setBooked] = useState<string>();
   const [error, setError] = useState<string>();

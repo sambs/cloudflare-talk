@@ -42,3 +42,22 @@ body {
 .seat.sold {
   background: #6b7280;
 }
+
+.chaos {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+}
+
+.chaos h2 {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
+.chaos label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

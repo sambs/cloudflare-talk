@@ -13,11 +13,15 @@ export type PayResult = { ok: true } | { error: string };
 
 export type Booking = { id: string; seatId: string };
 
-// Per-event knobs. Tests turn the timeouts down so they run fast.
+// Per-event knobs: the dashboard's chaos controls, plus timings that
+// tests turn down so they run fast
 export type SaleSettings = {
   paymentTimeoutSeconds: number;
+  outboxMaxBackoffSeconds: number; // cap on the delay between outbox retries
   declineRate: number; // 0 to 1
+  failNextCharges: number; // the provider returns 503 for this many calls
+  blockOutbox: boolean; // outbox deliveries fail until this is switched off
 };
 
-// Messages the EventSale DO pushes to every connected client
-export type ServerMessage = { type: "seats"; seats: Seat[] };
+// What the EventSale DO pushes to every connected client on each change
+export type SaleState = { seats: Seat[]; settings: SaleSettings };

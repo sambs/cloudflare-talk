@@ -3,8 +3,8 @@ import type {
   HoldResult,
   PayResult,
   SaleSettings,
+  SaleState,
   Seat,
-  ServerMessage,
 } from "../shared/types.ts";
 import {
   deliverPayment,
@@ -16,7 +16,10 @@ const ROWS = ["A", "B", "C", "D"];
 const SEATS_PER_ROW = 8;
 const DEFAULT_SETTINGS: SaleSettings = {
   paymentTimeoutSeconds: 90,
+  outboxMaxBackoffSeconds: 30,
   declineRate: 0,
+  failNextCharges: 0,
+  blockOutbox: false,
 };
 
 // If the nudge doesn't deliver an outbox entry, the alarm retries it
@@ -167,13 +170,17 @@ export class EventSale extends DurableObject {
 
     for (const entry of due) {
       try {
+        if (this.settings().blockOutbox) {
+          throw new Error("Downstream unavailable");
+        }
         await deliver[entry.type](JSON.parse(entry.payload));
         this.sql.exec(
           "UPDATE outbox SET status = 'done' WHERE id = ?",
           entry.id,
         );
       } catch (err) {
-        const delay = Math.min(30_000, 500 * 2 ** entry.attempts);
+        const maxDelay = this.settings().outboxMaxBackoffSeconds * 1000;
+        const delay = Math.min(maxDelay, 500 * 2 ** entry.attempts);
         this.sql.exec(
           `UPDATE outbox SET attempts = attempts + 1, next_attempt = ?, last_error = ?
            WHERE id = ?`,
@@ -201,6 +208,17 @@ export class EventSale extends DurableObject {
 
   updateSettings(changes: Partial<SaleSettings>) {
     this.ctx.storage.kv.put("settings", { ...this.settings(), ...changes });
+    this.broadcast();
+  }
+
+  // Asked by the fake payment provider on every charge attempt.
+  // Each call uses up one of the "fail the next N charges".
+  paymentChaos() {
+    const { declineRate, failNextCharges } = this.settings();
+    if (failNextCharges > 0) {
+      this.updateSettings({ failNextCharges: failNextCharges - 1 });
+    }
+    return { declineRate, unavailable: failNextCharges > 0 };
   }
 
   // Each browser keeps a WebSocket open to the DO for live updates.
@@ -211,19 +229,20 @@ export class EventSale extends DurableObject {
     }
     const [client, server] = Object.values(new WebSocketPair());
     this.ctx.acceptWebSocket(server);
-    server.send(this.seatsMessage());
+    server.send(this.stateMessage());
     return new Response(null, { status: 101, webSocket: client });
   }
 
   private broadcast() {
-    const message = this.seatsMessage();
+    const message = this.stateMessage();
     for (const ws of this.ctx.getWebSockets()) ws.send(message);
   }
 
-  private seatsMessage() {
+  private stateMessage() {
     const seats = this.sql
       .exec<Seat>("SELECT id, status FROM seats ORDER BY id")
       .toArray();
-    return JSON.stringify({ type: "seats", seats } satisfies ServerMessage);
+    const state: SaleState = { seats, settings: this.settings() };
+    return JSON.stringify(state);
   }
 }
