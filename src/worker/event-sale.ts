@@ -87,6 +87,7 @@ export class EventSale extends DurableObject {
       paymentTimeoutSeconds: this.settings().paymentTimeoutSeconds,
     };
 
+    this.armSafetyNet();
     // Transactional outbox: the hold and the intent to start its workflow
     // are committed together, or not at all
     const held = this.ctx.storage.transactionSync(() => {
@@ -119,6 +120,7 @@ export class EventSale extends DurableObject {
       .toArray();
     if (!seat) return { error: "Your hold has expired" };
 
+    this.armSafetyNet();
     this.enqueue("deliver-pay-event", { reservationId });
     this.nudge();
     return { ok: true };
@@ -151,10 +153,15 @@ export class EventSale extends DurableObject {
     );
   }
 
+  // Set the alarm *before* writing to the outbox. If this object dies in
+  // between, the worst case is an alarm that finds nothing to do.
+  private armSafetyNet() {
+    this.ctx.storage.setAlarm(Date.now() + ALARM_SAFETY_NET_MS);
+  }
+
   // Try to deliver right away. If that fails, or this instance is evicted
   // first, the alarm picks it up.
   private nudge() {
-    this.ctx.storage.setAlarm(Date.now() + ALARM_SAFETY_NET_MS);
     this.ctx.waitUntil(this.dispatchOutbox());
   }
 
@@ -191,14 +198,14 @@ export class EventSale extends DurableObject {
       }
     }
 
-    // Wake up again for the next pending entry, if there is one
+    // Wake up again for the next pending entry. The alarm is never
+    // cancelled: if the outbox is empty when it fires, it does nothing.
     const { next } = this.sql
       .exec<{ next: number | null }>(
         "SELECT MIN(next_attempt) AS next FROM outbox WHERE status = 'pending'",
       )
       .one();
-    if (next === null) await this.ctx.storage.deleteAlarm();
-    else await this.ctx.storage.setAlarm(next);
+    if (next !== null) await this.ctx.storage.setAlarm(next);
   }
 
   settings(): SaleSettings {
