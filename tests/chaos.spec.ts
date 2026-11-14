@@ -70,7 +70,7 @@ test("the charge step retries through a flaky provider", async ({
   await expect(seat(dashboard, "A1")).toHaveAccessibleName("A1 sold");
 });
 
-test("a broken outbox delays the workflow, then the backlog drains", async ({
+test("the outbox keeps retrying workflow starts until they succeed", async ({
   browser,
   request,
 }) => {
@@ -81,8 +81,10 @@ test("a broken outbox delays the workflow, then the backlog drains", async ({
   const alice = await newPage(browser);
   await joinAs(alice, "Alice", eventId);
 
-  const breakOutbox = dashboard.getByRole("switch", { name: "Break outbox" });
-  await breakOutbox.check();
+  const failStarts = dashboard.getByRole("switch", {
+    name: "Fail workflow starts",
+  });
+  await failStarts.check();
 
   // The hold still commits: the DO doesn't depend on the workflow
   await seat(alice, "A1").click();
@@ -95,9 +97,9 @@ test("a broken outbox delays the workflow, then the backlog drains", async ({
     "Payment isn't ready yet, try again",
   );
 
-  // Fixing it doesn't touch the outbox: its next retry just succeeds.
+  // Workflows comes back and the outbox's next retry succeeds.
   // Alice keeps tapping Pay until the workflow has started.
-  await breakOutbox.uncheck();
+  await failStarts.uncheck();
   await expect(async () => {
     await pay.click();
     await expect(alice.getByText("Processing payment…")).toBeVisible({

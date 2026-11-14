@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: SaleSettings = {
   outboxMaxBackoffSeconds: 30,
   declineRate: 0,
   failNextCharges: 0,
-  blockOutbox: false,
+  failWorkflowStarts: false,
 };
 
 // If the nudge doesn't deliver an outbox entry, the alarm retries it
@@ -143,10 +143,9 @@ export class EventSale extends DurableObject {
 
     for (const entry of due) {
       try {
-        if (this.settings().blockOutbox) {
-          throw new Error("Downstream unavailable");
-        }
-        await startReservation(JSON.parse(entry.payload));
+        await startReservation(JSON.parse(entry.payload), {
+          unavailable: this.settings().failWorkflowStarts,
+        });
         this.sql.exec(
           "UPDATE outbox SET status = 'done' WHERE id = ?",
           entry.id,

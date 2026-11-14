@@ -73,7 +73,11 @@ export class ReservationWorkflow extends WorkflowEntrypoint<
 // Called by the DO's outbox, which retries it until it succeeds.
 // The instance ID is the reservationId, so a retry can never start a
 // second workflow for the same hold.
-export async function startReservation(params: ReservationParams) {
+export async function startReservation(
+  params: ReservationParams,
+  { unavailable }: { unavailable: boolean }, // from the chaos controls
+) {
+  if (unavailable) throw new Error("Workflows unavailable");
   const { errors } = await env.RESERVATION.createBatch({
     instances: [{ id: params.reservationId, params }],
   });

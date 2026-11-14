@@ -59,10 +59,12 @@ function ChaosControls({ settings }: { settings: SaleSettings }) {
         <input
           type="checkbox"
           role="switch"
-          defaultChecked={settings.blockOutbox}
-          onChange={(e) => updateSettings({ blockOutbox: e.target.checked })}
+          defaultChecked={settings.failWorkflowStarts}
+          onChange={(e) =>
+            updateSettings({ failWorkflowStarts: e.target.checked })
+          }
         />
-        Break outbox
+        Fail workflow starts
       </label>
     </section>
   );

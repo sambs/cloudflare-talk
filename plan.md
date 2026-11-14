@@ -159,7 +159,6 @@ async dispatchOutbox() {
 
   for (const entry of due) {
     try {
-      if (this.chaos.blockOutbox) throw new Error("downstream unavailable");
       await this.handlers[entry.type](JSON.parse(entry.payload));
       this.sql.exec(`UPDATE outbox SET status = 'done' WHERE id = ?`, entry.id);
     } catch (err) {
@@ -254,10 +253,10 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 - **Seat map**, live over WebSockets: available, held (with countdown), sold. Declined seats flash before they return to the pool.
 - **Outbox panel**: entries as cards moving from pending to done, showing attempt count and next retry time.
 - **Workflow panel**: active reservations and their current step (waiting for payment, charging, retry _n_, recording, settled).
-- **Chaos controls**, all independent:
-  - **Decline-rate slider** (0–50%): seats get released and resold.
-  - **Flaky-provider toggle**: transient 503s, which Workflows step retries recover from.
-  - **Break-outbox switch**: workflow starts fail, holds pile up as "awaiting workflow", and the backlog drains when the switch is flipped back.
+- **Chaos controls**, all independent. Each one simulates a failing dependency at a boundary, never a broken mechanism of our own:
+  - **Decline-rate slider** (0–100%): seats get released and resold.
+  - **"Fail next 2 charges" button**: the payment provider returns transient 503s, which the charge step's retries recover from. It's a count rather than a toggle so it always stays within the step's retry limit.
+  - **"Fail workflow starts" switch**: creating a workflow fails, so holds pile up as "awaiting workflow". The outbox keeps retrying, and the backlog drains when the switch is flipped back.
 
 ---
 
@@ -267,7 +266,7 @@ That's the whole of the infrastructure. Retry policy, backoff, hold timeout, sch
 2. **QR code on screen.** The audience opens the event and the sale starts. Watch the map fill up and point out that there's no double-booking, with no locks written.
 3. **Turn up the decline rate.** Seats come back and there's a second rush. Explain how the workflow owns the hold, and how decline differs from timeout.
 4. **Make the provider flaky.** Payments still succeed after retries. Explain step retries and the idempotency key.
-5. **Break the outbox.** Holds succeed but the workflows don't start, and the outbox piles up. Paying for those holds is refused until their workflows exist. Flip it back and the backlog drains. Explain atomic writes, the nudge and the alarm.
+5. **Make workflow starts fail.** "Workflows is down." Holds still succeed, but the workflows don't start and the outbox piles up. Paying for those holds is refused until their workflows exist. Flip it back and the outbox's retries drain the backlog. Explain atomic writes, the nudge and the alarm.
 6. **Finish on D1.** Run `SELECT * FROM bookings` live: the record of tonight's sale. Maybe add a leaderboard (fastest payer, most declines).
 
 ---

@@ -20,7 +20,7 @@ export type SaleSettings = {
   outboxMaxBackoffSeconds: number; // cap on the delay between outbox retries
   declineRate: number; // 0 to 1
   failNextCharges: number; // the provider returns 503 for this many calls
-  blockOutbox: boolean; // outbox deliveries fail until this is switched off
+  failWorkflowStarts: boolean; // creating a workflow fails while this is on
 };
 
 // What the EventSale DO pushes to every connected client on each change
