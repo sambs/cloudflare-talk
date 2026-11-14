@@ -1,0 +1,33 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 1rem;
+}
+
+.seat-map {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.5rem;
+  max-width: 32rem;
+  padding: 0;
+  list-style: none;
+}
+
+.seat {
+  padding: 0.75rem 0;
+  border-radius: 0.5rem;
+  text-align: center;
+  color: white;
+}
+
+.seat.available {
+  background: #16a34a;
+}
+
+.seat.held {
+  background: #f59e0b;
+}
+
+.seat.sold {
+  background: #6b7280;
+}

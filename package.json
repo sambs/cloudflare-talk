@@ -8,7 +8,7 @@
     "dev": "cf dev",
     "build": "cf build",
     "deploy": "cf deploy",
-    "typecheck": "cf workers types && tsc",
+    "typecheck": "cf workers types && tsc && tsc -p src/client",
     "test": "playwright test",
     "format": "prettier --write .",
     "prepare": "husky"
@@ -19,11 +19,19 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "beta",
     "@playwright/test": "^1.65.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
     "cf": "^1.0.0-beta.31",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "prettier": "^3.10.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "hono": "^4.13.18",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }

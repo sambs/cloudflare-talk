@@ -1,13 +1,21 @@
-import { bindings, defineConfig } from "cf/config";
-import * as entrypoint from "./src/index.ts" with { type: "cf-worker" };
+import { bindings, defineConfig, defineWorker, exports } from "cf/config";
+import * as entrypoint from "./src/worker/index.ts" with { type: "cf-worker" };
+
+const worker = defineWorker({
+  name: "www",
+  compatibilityDate: "2026-11-10",
+  entrypoint,
+  exports: {
+    EventSale: exports.durableObject({ storage: "sqlite" }),
+  },
+});
 
 export default defineConfig({
   worker: {
-    name: "www",
-    compatibilityDate: "2026-11-10",
-    entrypoint,
+    ...worker,
     env: {
-      WORLD: bindings.text("World"),
+      // Passing the Worker definition (not just its name) types the DO stub
+      EVENT_SALE: bindings.durableObject({ worker, exportName: "EventSale" }),
     },
   },
 });

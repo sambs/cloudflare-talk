@@ -23,7 +23,7 @@ pnpm install
 pnpm dev
 ```
 
-The dev server runs the Worker locally, and the Durable Objects, Workflows and D1 are emulated locally too. Open the URL it prints (usually <http://localhost:5173>).
+The dev server runs the Worker locally, and the Durable Objects, Workflows and D1 are emulated locally too. Open the URL it prints (usually <http://localhost:5173>) for the buyer page, and `/dashboard.html` for the projector dashboard. Add `?event=<id>` to either page to choose an event.
 
 ### Tests
 

@@ -18,5 +18,7 @@
     "cloudflare.config.ts",
     "playwright.config.ts",
     ".cloudflare/types"
-  ]
+  ],
+  // Browser code has its own tsconfig with DOM types
+  "exclude": ["src/client"]
 }

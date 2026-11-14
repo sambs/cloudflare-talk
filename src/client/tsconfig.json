@@ -1,0 +1,10 @@
+{
+  // Browser code gets DOM types; the root tsconfig has the Workers runtime types instead
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["vite/client"],
+    "jsx": "react-jsx"
+  },
+  "include": [".", "../shared"]
+}

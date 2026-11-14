@@ -8,6 +8,15 @@ Demo app for a short meet-up talk on Cloudflare Workers: a ticket booking app bu
 - Node and pnpm versions are pinned in `mise.toml`, which also puts `node_modules/.bin` on `PATH`.
 - TypeScript, built with Vite and `@cloudflare/vite-plugin`. Access bindings with `import { env } from "cloudflare:workers"`.
 
+## Layout
+
+No SSR framework: the front end is a client-only React app served as static assets, and the Worker is a Hono app that only handles `/api/*`.
+
+- `src/worker/`: Hono routes (`index.ts`), the `EventSale` DO and, later, the workflow and fake payments. Type-checked with Workers runtime types (root `tsconfig.json`).
+- `src/client/`: React. Two pages, `index.html` (buyer, phones) and `dashboard.html` (projector), each its own Vite entry. It has its own `tsconfig.json` with DOM types, because DOM types and Workers types conflict.
+- `src/shared/`: plain types used by both. It must not import from `cloudflare:workers` or the DOM.
+- Pick an event with `?event=<id>` (default `demo`). Each event ID is its own DO.
+
 ## Commands
 
 - `pnpm dev`: local dev server (DOs, Workflows and D1 all run locally)
