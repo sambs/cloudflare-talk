@@ -24,7 +24,8 @@ type OutboxEntry = { id: number; params: string };
 
 // One instance per event: owns the live seat map for that sale
 export class EventSale extends DurableObject {
-  sql = this.ctx.storage.sql;
+  private sql = this.ctx.storage.sql;
+  private dispatching = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -56,8 +57,7 @@ export class EventSale extends DurableObject {
     }
   }
 
-  // The DO handles one request at a time, so two holds on the same seat
-  // can never race. No locks needed.
+  // Todo: explain why races aren't possible
   hold(seatId: string, customer: string): HoldResult {
     const params: ReservationParams = {
       reservationId: crypto.randomUUID(),
@@ -67,7 +67,10 @@ export class EventSale extends DurableObject {
       paymentTimeoutSeconds: this.settings().paymentTimeoutSeconds,
     };
 
-    this.scheduleRetry();
+    // Set the fallback *before* writing to the outbox. Written the other way
+    // round, dying in between would strand the entry with nothing to dispatch it.
+    this.scheduleDispatchFallback();
+
     // Transactional outbox: the hold and the intent to start its workflow
     // are committed together, or not at all
     const held = this.ctx.storage.transactionSync(() => {
@@ -87,8 +90,12 @@ export class EventSale extends DurableObject {
     });
     if (!held) return { error: "Seat not available" };
 
-    this.nudge();
+    // Try to dispatch right away (without waiting). If that fails,
+    // or this instance is evicted first, the fallback picks it up.
+    void this.dispatch();
+
     this.broadcast();
+
     return { reservationId: params.reservationId };
   }
 
@@ -107,40 +114,52 @@ export class EventSale extends DurableObject {
   }
 
   async alarm() {
-    await this.dispatchOutbox();
+    await this.dispatch();
   }
 
-  // Set the alarm *before* writing to the outbox. If this object dies in
-  // between, the worst case is an alarm that finds nothing to do.
-  private scheduleRetry() {
+  private scheduleDispatchFallback() {
     const delay = this.settings().outboxRetrySeconds * 1000;
     this.ctx.storage.setAlarm(Date.now() + delay);
   }
 
-  // Try to deliver right away. If that fails, or this instance is evicted
-  // first, the alarm picks it up.
-  private nudge() {
-    this.ctx.waitUntil(this.dispatchOutbox());
+  private cancelDispatchFallback() {
+    this.ctx.storage.deleteAlarm();
   }
 
-  private async dispatchOutbox() {
-    const pending = this.sql
-      .exec<OutboxEntry>("SELECT id, params FROM outbox ORDER BY id")
-      .toArray();
+  private async dispatch() {
+    // Safety first - schedule another run in case this one fails or the
+    // instance is evicted before the outbox is drained.
+    this.scheduleDispatchFallback();
 
-    for (const entry of pending) {
-      try {
+    if (this.dispatching) return;
+    this.dispatching = true;
+
+    try {
+      // Fetch and dispatch entries one at a time until the outbox is empty.
+      let entry = this.nextOutboxEntry();
+      while (entry) {
         await startReservation(JSON.parse(entry.params), {
           unavailable: this.settings().failWorkflowStarts,
         });
-      } catch {
-        // Workflows is either up or down, so don't bother with the rest.
-        // The alarm retries the whole outbox later.
-        this.scheduleRetry();
-        return;
+        this.sql.exec("DELETE FROM outbox WHERE id = ?", entry.id);
+        entry = this.nextOutboxEntry();
       }
-      this.sql.exec("DELETE FROM outbox WHERE id = ?", entry.id);
+      // We can safely cancel the fallback since we know the outbox is empty.
+      // There's no await since the empty check, so no hold can have arrived.
+      this.cancelDispatchFallback();
+    } catch (err) {
+      // Workflows is either up or down, so don't bother with the rest.
+      // The fallback alarm retries the whole outbox later.
+      console.error("Workflow start failed", err);
+    } finally {
+      this.dispatching = false;
     }
+  }
+
+  private nextOutboxEntry() {
+    return this.sql
+      .exec<OutboxEntry>("SELECT id, params FROM outbox ORDER BY id LIMIT 1")
+      .toArray()[0];
   }
 
   settings(): SaleSettings {
